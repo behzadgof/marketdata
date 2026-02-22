@@ -14,7 +14,16 @@ from __future__ import annotations
 
 import os
 
+from marketdata.compat import DataConfig, DataManager, DataValidator, ParquetStorage
 from marketdata.config import MarketDataConfig, MarketDataProviderType
+from marketdata.earnings_calendar import (
+    EarningsCalendar,
+    EarningsCallTime,
+    EarningsContext,
+    EarningsFetcher,
+    get_earnings_context,
+    load_earnings_calendar,
+)
 from marketdata.errors import MarketDataError, MarketDataErrorCode
 from marketdata.manager import MarketDataManager
 from marketdata.models.bar import Bar
@@ -31,6 +40,11 @@ __all__ = [
     # Manager
     "MarketDataManager",
     "create_manager_from_env",
+    # Compatibility APIs
+    "DataManager",
+    "DataConfig",
+    "ParquetStorage",
+    "DataValidator",
     # Config
     "MarketDataConfig",
     "MarketDataProviderType",
@@ -45,6 +59,13 @@ __all__ = [
     "EarningsEvent",
     "DividendEvent",
     "CorporateAction",
+    # Earnings calendar utilities
+    "EarningsCallTime",
+    "EarningsContext",
+    "EarningsCalendar",
+    "EarningsFetcher",
+    "load_earnings_calendar",
+    "get_earnings_context",
 ]
 
 
