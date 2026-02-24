@@ -33,6 +33,14 @@ from marketdata.models.earnings import EarningsEvent
 from marketdata.models.quote import Quote
 from marketdata.models.snapshot import Snapshot
 from marketdata.models.ticker_info import TickerInfo
+from marketdata.provider_settings import (
+    DEFAULT_PROVIDER_ORDER,
+    PROVIDER_SPECS,
+    MarketDataProviderSettings,
+    ProviderFieldSpec,
+    ProviderSettingsError,
+    ProviderSpec,
+)
 
 __version__ = "0.1.0"
 
@@ -45,6 +53,13 @@ __all__ = [
     "DataConfig",
     "ParquetStorage",
     "DataValidator",
+    # Provider settings
+    "MarketDataProviderSettings",
+    "ProviderSettingsError",
+    "ProviderFieldSpec",
+    "ProviderSpec",
+    "PROVIDER_SPECS",
+    "DEFAULT_PROVIDER_ORDER",
     # Config
     "MarketDataConfig",
     "MarketDataProviderType",
