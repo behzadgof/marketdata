@@ -28,7 +28,8 @@ class MarketDataManager:
 
         from marketdata import create_manager_from_env
         mgr = create_manager_from_env()
-        bars = mgr.get_bars("AAPL", date(2024, 1, 2), date(2024, 1, 5))
+        symbol = "YOUR_SYMBOL"
+        bars = mgr.get_bars(symbol, date(2024, 1, 2), date(2024, 1, 5))
     """
 
     def __init__(self, config: MarketDataConfig) -> None:
@@ -205,3 +206,4 @@ class MarketDataManager:
             f"No provider supports '{capability}'",
             code=MarketDataErrorCode.NO_DATA,
         )
+

@@ -151,6 +151,7 @@ class MarketDataProviderSettings:
             }
         """
         provider_key = self._normalize_provider(provider)
+
         spec = PROVIDER_SPECS[provider_key]
 
         persist = bool(payload.get("persist", True))
@@ -210,10 +211,14 @@ class MarketDataProviderSettings:
     def test_provider(
         self,
         provider: str,
-        symbol: str = "AAPL",
+        symbol: str | None = None,
     ) -> dict[str, Any]:
         """Test provider connectivity by fetching recent daily bars."""
         provider_key = self._normalize_provider(provider)
+
+        if symbol is None or not str(symbol).strip():
+            raise ProviderSettingsError("'symbol' is required for provider test")
+        test_symbol = str(symbol).strip().upper()
 
         env_values = self._combined_env()
         config = MarketDataConfig(
@@ -236,11 +241,11 @@ class MarketDataProviderSettings:
         state = self._load_state()
         provider_state = state.setdefault("providers", {}).setdefault(provider_key, {})
         try:
-            bars = manager.get_bars(symbol=symbol, start=start, end=end, timeframe="1day")
+            bars = manager.get_bars(symbol=test_symbol, start=start, end=end, timeframe="1day")
             result = {
                 "ok": True,
                 "provider": provider_key,
-                "symbol": symbol.upper(),
+                "symbol": test_symbol,
                 "bars": len(bars),
                 "start": start.isoformat(),
                 "end": end.isoformat(),
@@ -252,7 +257,7 @@ class MarketDataProviderSettings:
             result = {
                 "ok": False,
                 "provider": provider_key,
-                "symbol": symbol.upper(),
+                "symbol": test_symbol,
                 "bars": 0,
                 "start": start.isoformat(),
                 "end": end.isoformat(),
@@ -419,3 +424,5 @@ __all__ = [
     "PROVIDER_SPECS",
     "DEFAULT_PROVIDER_ORDER",
 ]
+
+

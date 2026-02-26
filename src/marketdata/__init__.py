@@ -7,7 +7,8 @@ Quick start::
 
     from marketdata import create_manager_from_env
     mgr = create_manager_from_env()
-    bars = mgr.get_bars("AAPL", date(2024, 1, 2), date(2024, 1, 5))
+    symbol = "YOUR_SYMBOL"
+    bars = mgr.get_bars(symbol, date(2024, 1, 2), date(2024, 1, 5))
 """
 
 from __future__ import annotations
@@ -120,3 +121,4 @@ def create_manager_from_env() -> MarketDataManager:
     )
 
     return MarketDataManager(config)
+

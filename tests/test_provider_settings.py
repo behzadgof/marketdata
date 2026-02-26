@@ -112,3 +112,9 @@ def test_test_provider_mock_passes(tmp_path) -> None:
     assert result["provider"] == "mock"
     assert result["ok"] is True
     assert result["bars"] > 0
+
+def test_test_provider_requires_symbol(tmp_path) -> None:
+    svc = _service(tmp_path)
+    svc.update_provider("mock", {"enabled": True, "persist": False})
+    with pytest.raises(ProviderSettingsError):
+        svc.test_provider("mock", symbol="")
