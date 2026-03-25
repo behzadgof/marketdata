@@ -13,7 +13,10 @@ from marketdata.streaming.base import BaseStreamingProvider
 
 logger = logging.getLogger(__name__)
 
-_BINANCE_WS_URL = "wss://stream.binance.com:9443/ws"
+_BINANCE_WS_URLS = [
+    "wss://stream.binance.us:9443/ws",
+    "wss://stream.binance.com:9443/ws",
+]
 
 
 class BinanceStreamingProvider(BaseStreamingProvider):
@@ -23,9 +26,10 @@ class BinanceStreamingProvider(BaseStreamingProvider):
     for public market data.
     """
 
-    def __init__(self, url: str = _BINANCE_WS_URL) -> None:
+    def __init__(self, url: str | None = None) -> None:
         super().__init__()
-        self._url = url
+        self._url = url  # resolved in connect() if None
+        self._urls = _BINANCE_WS_URLS
         self._ws: Any = None
         self._recv_task: asyncio.Task | None = None
         self._msg_id = 0
@@ -60,10 +64,21 @@ class BinanceStreamingProvider(BaseStreamingProvider):
     async def connect(self) -> None:
         import websockets
 
-        self._ws = await websockets.connect(self._url)
-        self._connected = True
-        self._recv_task = asyncio.create_task(self._recv_loop())
-        logger.info("Binance WebSocket connected")
+        urls = [self._url] if self._url else self._urls
+        last_exc: Exception | None = None
+        for url in urls:
+            try:
+                self._ws = await asyncio.wait_for(
+                    websockets.connect(url), timeout=5,
+                )
+                self._connected = True
+                self._recv_task = asyncio.create_task(self._recv_loop())
+                logger.info("Binance WebSocket connected to %s", url)
+                return
+            except Exception as exc:
+                last_exc = exc
+                logger.debug("Binance %s failed: %s", url, exc)
+        raise last_exc or ConnectionError("No Binance WebSocket URL available")
 
     async def disconnect(self) -> None:
         self._connected = False
