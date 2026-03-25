@@ -77,7 +77,8 @@ class ParquetCache(CacheBackend):
     def _file_path(
         self, symbol: str, timeframe: str, start: date, end: date,
     ) -> Path:
-        symbol_dir = self.base_path / symbol.upper()
+        safe_name = symbol.upper().replace("/", "-")
+        symbol_dir = self.base_path / safe_name
         symbol_dir.mkdir(exist_ok=True)
         return symbol_dir / f"{timeframe}_{start}_{end}.parquet"
 
@@ -107,7 +108,7 @@ class ParquetCache(CacheBackend):
         return self._file_path(symbol, timeframe, start, end).exists()
 
     def clear(self, symbol: str) -> None:
-        symbol_dir = self.base_path / symbol.upper()
+        symbol_dir = self.base_path / symbol.upper().replace("/", "-")
         if symbol_dir.exists():
             shutil.rmtree(symbol_dir)
 
