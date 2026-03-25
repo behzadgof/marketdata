@@ -6,6 +6,34 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
+class AssetType(Enum):
+    """Asset class for symbol routing."""
+
+    STOCK = "stock"
+    CRYPTO = "crypto"
+    FOREX = "forex"
+
+
+# Known crypto base symbols (uppercase).
+_CRYPTO_SYMBOLS: set[str] = {
+    "BTC", "ETH", "SOL", "DOGE", "ADA", "XRP", "DOT", "AVAX", "LINK",
+    "MATIC", "UNI", "AAVE", "SHIB", "LTC", "ATOM", "NEAR", "FTM", "ALGO",
+    "MANA", "SAND", "APE", "CRV", "MKR", "COMP", "SNX", "SUSHI", "YFI",
+    "BAT", "ENJ", "GRT", "FIL", "AXS", "HBAR", "ICP", "VET", "THETA",
+    "EOS", "XTZ", "FLOW", "EGLD", "QNT", "AR", "IMX", "OP", "ARB", "SUI",
+    "SEI", "TIA", "JUP", "RENDER", "INJ", "FET", "PEPE", "WIF", "BONK",
+}
+
+
+def detect_asset_type(symbol: str) -> AssetType:
+    """Classify a symbol as STOCK, CRYPTO, or FOREX."""
+    upper = symbol.upper()
+    if "/" in upper:
+        base = upper.split("/")[0]
+        return AssetType.CRYPTO if base in _CRYPTO_SYMBOLS else AssetType.FOREX
+    return AssetType.CRYPTO if upper in _CRYPTO_SYMBOLS else AssetType.STOCK
+
+
 class MarketDataProviderType(Enum):
     """Supported data provider backends."""
 

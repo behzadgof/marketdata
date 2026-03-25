@@ -16,7 +16,12 @@ from __future__ import annotations
 import os
 
 from marketdata.compat import DataConfig, DataManager, DataValidator, ParquetStorage
-from marketdata.config import MarketDataConfig, MarketDataProviderType
+from marketdata.config import (
+    AssetType,
+    MarketDataConfig,
+    MarketDataProviderType,
+    detect_asset_type,
+)
 from marketdata.earnings_calendar import (
     EarningsCalendar,
     EarningsCallTime,
@@ -62,8 +67,10 @@ __all__ = [
     "PROVIDER_SPECS",
     "DEFAULT_PROVIDER_ORDER",
     # Config
+    "AssetType",
     "MarketDataConfig",
     "MarketDataProviderType",
+    "detect_asset_type",
     # Errors
     "MarketDataError",
     "MarketDataErrorCode",

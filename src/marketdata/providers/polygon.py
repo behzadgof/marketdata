@@ -15,6 +15,7 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from marketdata.config import AssetType, detect_asset_type
 from marketdata.errors import MarketDataError, MarketDataErrorCode
 from marketdata.models.bar import Bar
 from marketdata.models.dividend import DividendEvent
@@ -71,6 +72,28 @@ class PolygonProvider(BaseMarketDataProvider):
             "earnings", "dividends", "calendar",
         }
 
+    # --------------------------------------------------------- symbol helpers
+
+    @staticmethod
+    def _polygon_ticker(symbol: str) -> str:
+        """Convert a user-facing symbol to Polygon ticker format."""
+        asset = detect_asset_type(symbol)
+        upper = symbol.upper()
+        if asset == AssetType.CRYPTO:
+            base = upper.split("/")[0] if "/" in upper else upper
+            return f"X:{base}USD"
+        return upper
+
+    @staticmethod
+    def _polygon_market(symbol: str) -> str:
+        """Return Polygon market segment for snapshot/quote endpoints."""
+        return "crypto" if detect_asset_type(symbol) == AssetType.CRYPTO else "stocks"
+
+    @staticmethod
+    def _polygon_locale(symbol: str) -> str:
+        """Return Polygon locale for snapshot/quote endpoints."""
+        return "global" if detect_asset_type(symbol) == AssetType.CRYPTO else "us"
+
     # ------------------------------------------------------------------ bars
 
     _TF_MAP: dict[str, tuple[int, str]] = {
@@ -112,7 +135,7 @@ class PolygonProvider(BaseMarketDataProvider):
         self, symbol: str, start: date, end: date, mult: int, span: str,
     ) -> list[Bar]:
         aggs = self.client.get_aggs(
-            ticker=symbol.upper(),
+            ticker=self._polygon_ticker(symbol),
             multiplier=mult,
             timespan=span,
             from_=start.isoformat(),
@@ -127,8 +150,9 @@ class PolygonProvider(BaseMarketDataProvider):
         self, symbol: str, start: date, end: date, mult: int, span: str,
     ) -> list[Bar]:
         bars: list[Bar] = []
+        ticker = self._polygon_ticker(symbol)
         url: str | None = (
-            f"{self.base_url}/v2/aggs/ticker/{symbol.upper()}"
+            f"{self.base_url}/v2/aggs/ticker/{ticker}"
             f"/range/{mult}/{span}/{start}/{end}"
         )
         params: dict[str, Any] = {
@@ -195,11 +219,16 @@ class PolygonProvider(BaseMarketDataProvider):
             ) from exc
 
     def _quote_sdk(self, symbol: str) -> Quote:
-        snap = self.client.get_snapshot_ticker("stocks", symbol.upper())
+        snap = self.client.get_snapshot_ticker(
+            self._polygon_market(symbol), self._polygon_ticker(symbol),
+        )
         return self._snap_to_quote(symbol, snap)
 
     def _quote_rest(self, symbol: str) -> Quote:
-        url = f"{self.base_url}/v2/snapshot/locale/us/markets/stocks/tickers/{symbol.upper()}"
+        locale = self._polygon_locale(symbol)
+        market = self._polygon_market(symbol)
+        ticker = self._polygon_ticker(symbol)
+        url = f"{self.base_url}/v2/snapshot/locale/{locale}/markets/{market}/tickers/{ticker}"
         resp = self.session.get(url, params={"apiKey": self.api_key})
         self._check_response(resp)
         data = resp.json().get("ticker", {})
@@ -250,7 +279,9 @@ class PolygonProvider(BaseMarketDataProvider):
             ) from exc
 
     def _snapshot_sdk(self, symbol: str) -> Snapshot:
-        snap = self.client.get_snapshot_ticker("stocks", symbol.upper())
+        snap = self.client.get_snapshot_ticker(
+            self._polygon_market(symbol), self._polygon_ticker(symbol),
+        )
         quote = self._snap_to_quote(symbol, snap)
         return Snapshot(
             symbol=symbol.upper(),
@@ -260,7 +291,10 @@ class PolygonProvider(BaseMarketDataProvider):
         )
 
     def _snapshot_rest(self, symbol: str) -> Snapshot:
-        url = f"{self.base_url}/v2/snapshot/locale/us/markets/stocks/tickers/{symbol.upper()}"
+        locale = self._polygon_locale(symbol)
+        market = self._polygon_market(symbol)
+        ticker = self._polygon_ticker(symbol)
+        url = f"{self.base_url}/v2/snapshot/locale/{locale}/markets/{market}/tickers/{ticker}"
         resp = self.session.get(url, params={"apiKey": self.api_key})
         self._check_response(resp)
         data = resp.json().get("ticker", {})
