@@ -1,0 +1,140 @@
+"""Binance WebSocket streaming provider for real-time crypto data."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Any
+
+from marketdata.config import AssetType, detect_asset_type
+from marketdata.streaming.base import BaseStreamingProvider
+
+logger = logging.getLogger(__name__)
+
+_BINANCE_WS_URL = "wss://stream.binance.com:9443/ws"
+
+
+class BinanceStreamingProvider(BaseStreamingProvider):
+    """Real-time crypto data via Binance WebSocket API.
+
+    Supports trade streams for crypto symbols. No API key required
+    for public market data.
+    """
+
+    def __init__(self, url: str = _BINANCE_WS_URL) -> None:
+        super().__init__()
+        self._url = url
+        self._ws: Any = None
+        self._recv_task: asyncio.Task | None = None
+        self._msg_id = 0
+
+    # -- Symbol mapping -------------------------------------------------------
+
+    @staticmethod
+    def _to_binance_symbol(symbol: str) -> str:
+        """Convert user-facing symbol to Binance stream format.
+
+        BTC/USD → btcusdt, ETH → ethusdt
+        """
+        upper = symbol.upper().replace("/", "")
+        if upper.endswith("USD") and not upper.endswith("USDT"):
+            upper = upper + "T"  # USD → USDT
+        return upper.lower()
+
+    @staticmethod
+    def _from_binance_symbol(symbol: str) -> str:
+        """Convert Binance symbol back to user-facing format.
+
+        BTCUSDT → BTC/USD
+        """
+        upper = symbol.upper()
+        if upper.endswith("USDT"):
+            base = upper[:-4]
+            return f"{base}/USD"
+        return upper
+
+    # -- Connection lifecycle -------------------------------------------------
+
+    async def connect(self) -> None:
+        import websockets
+
+        self._ws = await websockets.connect(self._url)
+        self._connected = True
+        self._recv_task = asyncio.create_task(self._recv_loop())
+        logger.info("Binance WebSocket connected")
+
+    async def disconnect(self) -> None:
+        self._connected = False
+        if self._recv_task and not self._recv_task.done():
+            self._recv_task.cancel()
+            try:
+                await self._recv_task
+            except asyncio.CancelledError:
+                pass
+        if self._ws:
+            await self._ws.close()
+            self._ws = None
+        logger.info("Binance WebSocket disconnected")
+
+    # -- Subscription ---------------------------------------------------------
+
+    async def subscribe(self, symbols: list[str], channels: list[str]) -> None:
+        streams = []
+        for sym in symbols:
+            if detect_asset_type(sym) != AssetType.CRYPTO:
+                continue
+            binance_sym = self._to_binance_symbol(sym)
+            if "quotes" in channels or "trades" in channels:
+                streams.append(f"{binance_sym}@trade")
+            self._subscribed_symbols.add(sym)
+
+        if streams and self._ws:
+            self._msg_id += 1
+            await self._ws.send(json.dumps({
+                "method": "SUBSCRIBE",
+                "params": streams,
+                "id": self._msg_id,
+            }))
+
+    async def unsubscribe(self, symbols: list[str]) -> None:
+        streams = []
+        for sym in symbols:
+            binance_sym = self._to_binance_symbol(sym)
+            streams.append(f"{binance_sym}@trade")
+            self._subscribed_symbols.discard(sym)
+
+        if streams and self._ws:
+            self._msg_id += 1
+            await self._ws.send(json.dumps({
+                "method": "UNSUBSCRIBE",
+                "params": streams,
+                "id": self._msg_id,
+            }))
+
+    # -- Receive loop ---------------------------------------------------------
+
+    async def _recv_loop(self) -> None:
+        try:
+            async for raw in self._ws:
+                try:
+                    msg = json.loads(raw)
+                    if msg.get("e") == "trade":
+                        self._handle_trade(msg)
+                except Exception:
+                    pass
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.warning("Binance recv loop error: %s", exc)
+            self._connected = False
+
+    def _handle_trade(self, msg: dict) -> None:
+        binance_sym = msg.get("s", "")
+        symbol = self._from_binance_symbol(binance_sym)
+        price = float(msg["p"])
+        size = float(msg["q"])
+        ts_ms = msg.get("T", 0)
+        timestamp = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+        self._emit_quote(symbol, price, size, timestamp)
