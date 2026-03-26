@@ -131,22 +131,63 @@ class BinanceStreamingProvider(BaseStreamingProvider):
     # -- Receive loop ---------------------------------------------------------
 
     async def _recv_loop(self) -> None:
-        try:
-            async for raw in self._ws:
-                try:
-                    msg = json.loads(raw)
-                    event = msg.get("e", "")
-                    if event == "trade":
-                        self._handle_trade(msg)
-                    elif event == "24hrMiniTicker":
-                        self._handle_mini_ticker(msg)
-                except Exception:
-                    pass
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning("Binance recv loop error: %s", exc)
-            self._connected = False
+        retry_delay = 1.0
+        max_delay = 60.0
+        while True:
+            try:
+                async for raw in self._ws:
+                    try:
+                        msg = json.loads(raw)
+                        event = msg.get("e", "")
+                        if event == "trade":
+                            self._handle_trade(msg)
+                        elif event == "24hrMiniTicker":
+                            self._handle_mini_ticker(msg)
+                    except Exception:
+                        pass
+                self._connected = False
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Binance recv loop error: %s", exc)
+                self._connected = False
+
+            # Auto-reconnect
+            logger.info("Binance disconnected, reconnecting in %.0fs...", retry_delay)
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, max_delay)
+            try:
+                import websockets
+                urls = [self._url] if self._url else self._urls
+                for url in urls:
+                    try:
+                        self._ws = await asyncio.wait_for(
+                            websockets.connect(url), timeout=5,
+                        )
+                        self._connected = True
+                        retry_delay = 1.0
+                        logger.info("Binance reconnected to %s", url)
+                        # Re-subscribe
+                        if self._subscribed_symbols:
+                            streams = [
+                                f"{self._to_binance_symbol(s)}@miniTicker"
+                                for s in self._subscribed_symbols
+                            ]
+                            self._msg_id += 1
+                            await self._ws.send(json.dumps({
+                                "method": "SUBSCRIBE",
+                                "params": streams,
+                                "id": self._msg_id,
+                            }))
+                        break
+                    except Exception:
+                        continue
+                else:
+                    logger.warning("Binance reconnect failed, all URLs exhausted")
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Binance reconnect failed: %s", exc)
 
     def _handle_trade(self, msg: dict) -> None:
         binance_sym = msg.get("s", "")

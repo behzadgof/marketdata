@@ -107,19 +107,52 @@ class CoinbaseStreamingProvider(BaseStreamingProvider):
     # -- Receive loop ---------------------------------------------------------
 
     async def _recv_loop(self) -> None:
-        try:
-            async for raw in self._ws:
-                try:
-                    msg = json.loads(raw)
-                    if msg.get("type") == "ticker":
-                        self._handle_ticker(msg)
-                except Exception:
-                    pass
-        except asyncio.CancelledError:
-            raise
-        except Exception as exc:
-            logger.warning("Coinbase recv loop error: %s", exc)
-            self._connected = False
+        retry_delay = 1.0
+        max_delay = 60.0
+        while True:
+            try:
+                async for raw in self._ws:
+                    try:
+                        msg = json.loads(raw)
+                        if msg.get("type") == "ticker":
+                            self._handle_ticker(msg)
+                    except Exception:
+                        pass
+                # WebSocket closed normally — reconnect
+                self._connected = False
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Coinbase recv loop error: %s", exc)
+                self._connected = False
+
+            # Auto-reconnect with exponential backoff
+            logger.info("Coinbase disconnected, reconnecting in %.0fs...", retry_delay)
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(retry_delay * 2, max_delay)
+            try:
+                import websockets
+                self._ws = await asyncio.wait_for(
+                    websockets.connect(self._url), timeout=10,
+                )
+                self._connected = True
+                retry_delay = 1.0
+                logger.info("Coinbase reconnected")
+                # Re-subscribe to previously subscribed symbols
+                if self._subscribed_symbols:
+                    product_ids = [
+                        self._to_coinbase_symbol(s) for s in self._subscribed_symbols
+                    ]
+                    await self._ws.send(json.dumps({
+                        "type": "subscribe",
+                        "channels": [
+                            {"name": "ticker", "product_ids": product_ids}
+                        ],
+                    }))
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.warning("Coinbase reconnect failed: %s", exc)
 
     def _handle_ticker(self, msg: dict) -> None:
         """Handle ticker message: {type, product_id, price, last_size, time}."""
