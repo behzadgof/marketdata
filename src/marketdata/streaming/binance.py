@@ -102,7 +102,7 @@ class BinanceStreamingProvider(BaseStreamingProvider):
                 continue
             binance_sym = self._to_binance_symbol(sym)
             if "quotes" in channels or "trades" in channels:
-                streams.append(f"{binance_sym}@trade")
+                streams.append(f"{binance_sym}@miniTicker")
             self._subscribed_symbols.add(sym)
 
         if streams and self._ws:
@@ -117,7 +117,7 @@ class BinanceStreamingProvider(BaseStreamingProvider):
         streams = []
         for sym in symbols:
             binance_sym = self._to_binance_symbol(sym)
-            streams.append(f"{binance_sym}@trade")
+            streams.append(f"{binance_sym}@miniTicker")
             self._subscribed_symbols.discard(sym)
 
         if streams and self._ws:
@@ -135,8 +135,11 @@ class BinanceStreamingProvider(BaseStreamingProvider):
             async for raw in self._ws:
                 try:
                     msg = json.loads(raw)
-                    if msg.get("e") == "trade":
+                    event = msg.get("e", "")
+                    if event == "trade":
                         self._handle_trade(msg)
+                    elif event == "24hrMiniTicker":
+                        self._handle_mini_ticker(msg)
                 except Exception:
                     pass
         except asyncio.CancelledError:
@@ -153,3 +156,13 @@ class BinanceStreamingProvider(BaseStreamingProvider):
         ts_ms = msg.get("T", 0)
         timestamp = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
         self._emit_quote(symbol, price, size, timestamp)
+
+    def _handle_mini_ticker(self, msg: dict) -> None:
+        """Handle 24hr mini ticker: {e, s, c (close), o (open), h, l, v, q}."""
+        binance_sym = msg.get("s", "")
+        symbol = self._from_binance_symbol(binance_sym)
+        price = float(msg["c"])  # current/close price
+        volume = float(msg.get("v", 0))
+        ts_ms = msg.get("E", 0)  # event time
+        timestamp = datetime.fromtimestamp(ts_ms / 1000, tz=timezone.utc)
+        self._emit_quote(symbol, price, volume, timestamp)
