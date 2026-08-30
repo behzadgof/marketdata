@@ -123,8 +123,26 @@ def _thanksgiving(year: int) -> date:
     return _nth_weekday(year, 11, 3, 4)
 
 
+#: One-off full closures that no rule can derive: national days of mourning,
+#: weather, and similar. Every other holiday here is computed from a weekday
+#: rule, which is why these need listing -- a rule-based calendar reports them
+#: as ordinary trading days, and a consumer diffing expected against actual
+#: sessions then sees a whole market's worth of missing data and no reason for
+#: it.
+#:
+#: Deliberately not exhaustive back through history. These are the closures
+#: verified against the consumers using this library; older ones (Hurricane
+#: Sandy 2012-10-29/30, G.H.W. Bush 2018-12-05, 9/11 2001-09-11..14) are real
+#: but unverified here, and a wrong date is worse than a missing one -- it
+#: silently removes a genuine trading day from get_trading_dates. Add them with
+#: a source when someone backfills that far.
+AD_HOC_CLOSURES: frozenset[date] = frozenset({
+    date(2025, 1, 9),   # National Day of Mourning for President Jimmy Carter.
+})
+
+
 def _nyse_holidays(year: int) -> set[date]:
-    """All NYSE holidays for a given year."""
+    """All NYSE holidays for a given year, including one-off closures."""
     holidays = {
         _new_years(year),
         _mlk_day(year),
@@ -139,6 +157,10 @@ def _nyse_holidays(year: int) -> set[date]:
     }
     # Remove sentinel dates
     holidays.discard(date(1, 1, 1))
+    # Folded in here rather than checked separately in is_trading_day, so every
+    # entry point benefits at once: is_holiday, is_trading_day and
+    # get_trading_dates all go through this.
+    holidays |= {d for d in AD_HOC_CLOSURES if d.year == year}
     return holidays
 
 
