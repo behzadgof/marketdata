@@ -3,6 +3,7 @@
 from datetime import date, datetime, time
 
 from marketdata.calendar import (
+    AD_HOC_CLOSURES,
     get_trading_dates,
     is_half_day,
     is_holiday,
@@ -105,3 +106,50 @@ class TestMarketHours:
 
     def test_close_time_half_day(self):
         assert market_close_time(date(2024, 11, 29)) == time(13, 0)
+
+
+class TestAdHocClosures:
+    """One-off full closures no weekday rule can derive.
+
+    Without these the calendar reports them as ordinary trading days, and a
+    consumer diffing expected sessions against actual data sees a whole
+    market's worth of missing bars with no reason for it.
+    """
+
+    def test_national_day_of_mourning_is_not_a_trading_day(self):
+        # 2025-01-09 was a Thursday. The NYSE closed for the full day for
+        # President Carter's National Day of Mourning.
+        d = date(2025, 1, 9)
+        assert d.weekday() < 5, "must be a weekday or this proves nothing"
+        assert is_trading_day(d) is False
+
+    def test_ad_hoc_closure_reports_as_a_holiday(self):
+        assert is_holiday(date(2025, 1, 9)) is True
+
+    def test_ad_hoc_closure_is_excluded_from_get_trading_dates(self):
+        """The entry point most consumers actually use."""
+        days = get_trading_dates(date(2025, 1, 6), date(2025, 1, 10))
+        assert date(2025, 1, 9) not in days
+        # The surrounding weekdays are untouched.
+        assert date(2025, 1, 8) in days
+        assert date(2025, 1, 10) in days
+
+    def test_only_affects_its_own_year(self):
+        """The set is filtered by year, so a closure cannot leak into another."""
+        from marketdata.calendar import _nyse_holidays
+        assert date(2025, 1, 9) in _nyse_holidays(2025)
+        assert len(_nyse_holidays(2026)) == 10, "2026 must keep the 10 rule-derived days"
+
+    def test_every_listed_closure_is_a_weekday(self):
+        """A weekend entry would be inert and signals a typo -- the market is
+        already closed, so it would never change an answer."""
+        for d in AD_HOC_CLOSURES:
+            assert d.weekday() < 5, f"{d} is a {d.strftime('%A')}"
+
+    def test_no_listed_closure_duplicates_a_rule_derived_holiday(self):
+        """A date already derived by rule does not belong here; listing it
+        hides the fact that the rule covers it."""
+        from marketdata.calendar import _nyse_holidays
+        for d in AD_HOC_CLOSURES:
+            rule_derived = _nyse_holidays(d.year) - AD_HOC_CLOSURES
+            assert d not in rule_derived, f"{d} is already derived by rule"
